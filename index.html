@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>区分求積法（リーマン和）シミュレーター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', 'Hiragino Kaku Gothic ProN', 'Meiryo', sans-serif; }
+        /* カスタムレンジスライダーのスタイル */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 1.25rem;
+            width: 1.25rem;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            margin-top: -0.375rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 0.5rem;
+            cursor: pointer;
+            background: #e5e7eb;
+            border-radius: 0.25rem;
+        }
+        input[type=range]:focus { outline: none; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- ヘッダー -->
+    <header class="bg-blue-600 text-white p-4 shadow-md flex-shrink-0">
+        <h1 class="text-xl font-bold flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M3 12h4l3-9 5 18 4-8 2 2"/></svg>
+            区分求積法 シミュレーター
+        </h1>
+        <p class="text-sm text-blue-100 mt-1">グラフと長方形の面積を用いて、定積分の概念を視覚的に理解しましょう。</p>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-grow flex flex-col md:flex-row p-4 gap-4 overflow-hidden">
+        
+        <!-- 左側：コントロールパネル -->
+        <aside class="w-full md:w-80 bg-white p-5 rounded-2xl shadow-lg flex flex-col gap-6 overflow-y-auto flex-shrink-0 border border-slate-100">
+            
+            <!-- 1. 関数選択 -->
+            <div>
+                <label for="functionSelect" class="block text-sm font-semibold text-slate-700 mb-2">1. 関数の選択</label>
+                <select id="functionSelect" class="w-full p-2.5 border border-slate-300 rounded-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                    <option value="x">y = x</option>
+                    <option value="x2">y = x²</option>
+                    <option value="x3">y = x³</option>
+                    <option value="sin">y = sin(x)</option>
+                    <option value="exp">y = eˣ</option>
+                    <option value="inv">y = 1/x</option>
+                </select>
+            </div>
+
+            <!-- 2. 区間設定 -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">2. 積分区間 [a, b]</label>
+                <div class="flex items-center gap-3">
+                    <div class="flex-1">
+                        <span class="text-xs text-slate-500 block mb-1">下端 a</span>
+                        <input type="number" id="inputA" value="0" step="0.5" class="w-full p-2 border border-slate-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <span class="font-bold text-slate-400 mt-5">〜</span>
+                    <div class="flex-1">
+                        <span class="text-xs text-slate-500 block mb-1">上端 b</span>
+                        <input type="number" id="inputB" value="2" step="0.5" class="w-full p-2 border border-slate-300 rounded-lg text-center focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <p id="intervalError" class="text-red-500 text-xs mt-2 hidden">※ a は b より小さい必要があります。</p>
+            </div>
+
+            <!-- 3. 評価点の選択 -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">3. 長方形の高さ（評価点）</label>
+                <div class="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-lg">
+                    <label class="cursor-pointer">
+                        <input type="radio" name="evalPoint" value="left" class="peer sr-only" checked>
+                        <div class="text-center py-2 text-sm rounded-md peer-checked:bg-white peer-checked:shadow peer-checked:font-bold peer-checked:text-blue-600 transition-all">左端</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="evalPoint" value="mid" class="peer sr-only">
+                        <div class="text-center py-2 text-sm rounded-md peer-checked:bg-white peer-checked:shadow peer-checked:font-bold peer-checked:text-blue-600 transition-all">中点</div>
+                    </label>
+                    <label class="cursor-pointer">
+                        <input type="radio" name="evalPoint" value="right" class="peer sr-only">
+                        <div class="text-center py-2 text-sm rounded-md peer-checked:bg-white peer-checked:shadow peer-checked:font-bold peer-checked:text-blue-600 transition-all">右端</div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 4. 分割数スライダー -->
+            <div class="mt-2">
+                <label for="nSlider" class="flex justify-between items-end mb-2">
+                    <span class="text-sm font-semibold text-slate-700">4. 分割数 n</span>
+                    <span id="nDisplay" class="text-lg font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-md">n = 5</span>
+                </label>
+                <input type="range" id="nSlider" min="1" max="200" value="5" class="w-full">
+                <div class="flex justify-between text-xs text-slate-400 mt-1">
+                    <span>1</span>
+                    <span>200</span>
+                </div>
+            </div>
+
+            <!-- 補足説明 -->
+            <div class="mt-auto bg-blue-50 p-4 rounded-xl text-xs text-slate-600 border border-blue-100">
+                分割数 <span class="font-bold">n</span> を増やすと、長方形の幅（Δx）が細かくなり、長方形の面積の合計が実際の定積分（曲線の下の面積）に近づいていく様子を確認できます。
+            </div>
+        </aside>
+
+        <!-- 右側：グラフと結果表示 -->
+        <section class="flex-grow flex flex-col gap-4 overflow-hidden relative">
+            
+            <!-- キャンバスエリア -->
+            <div id="canvasContainer" class="flex-grow bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden relative">
+                <canvas id="graphCanvas" class="absolute inset-0 w-full h-full"></canvas>
+                <!-- 軸ラベルなどを表示するためのオーバーレイ -->
+                <div class="absolute top-4 left-4 bg-white/80 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm pointer-events-none">
+                    <span id="formulaDisplay" class="font-serif text-lg font-bold text-slate-800">f(x) = x²</span>
+                </div>
+            </div>
+
+            <!-- 結果表示エリア -->
+            <div class="bg-white p-5 rounded-2xl shadow-lg border border-slate-100 flex-shrink-0">
+                <h3 class="text-sm font-bold text-slate-500 mb-3 uppercase tracking-wider">計算結果の比較</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- 近似値 -->
+                    <div class="bg-blue-50 rounded-xl p-4 border border-blue-100 relative overflow-hidden">
+                        <div class="absolute right-[-10px] top-[-10px] opacity-10 text-6xl">📊</div>
+                        <div class="text-sm text-blue-800 mb-1">長方形の面積の和（近似値）</div>
+                        <div class="text-3xl font-bold text-blue-600 font-mono" id="approxValue">0.0000</div>
+                        <div class="text-xs text-blue-500 mt-1">Σ f(x_i) Δx</div>
+                    </div>
+                    <!-- 真の値 -->
+                    <div class="bg-emerald-50 rounded-xl p-4 border border-emerald-100 relative overflow-hidden">
+                        <div class="absolute right-[-10px] top-[-10px] opacity-10 text-6xl">∫</div>
+                        <div class="text-sm text-emerald-800 mb-1">定積分の値（真の値）</div>
+                        <div class="text-3xl font-bold text-emerald-600 font-mono" id="exactValue">0.0000</div>
+                        <div class="text-xs text-emerald-500 mt-1">∫ f(x) dx</div>
+                    </div>
+                </div>
+                <!-- 誤差表示 -->
+                <div class="mt-4 flex items-center justify-between px-4 py-2 bg-slate-50 rounded-lg text-sm text-slate-600">
+                    <span>誤差（|真の値 - 近似値|）:</span>
+                    <span id="errorValue" class="font-mono font-bold">0.0000</span>
+                </div>
+            </div>
+            
+        </section>
+    </main>
+
+    <script>
+        // 定義済み関数とその不定積分
+        const functions = {
+            'x': {
+                eval: (x) => x,
+                integral: (x) => (x * x) / 2,
+                label: "f(x) = x",
+                defaultA: 0,
+                defaultB: 2
+            },
+            'x2': {
+                eval: (x) => x * x,
+                integral: (x) => (x * x * x) / 3,
+                label: "f(x) = x²",
+                defaultA: 0,
+                defaultB: 2
+            },
+            'x3': {
+                eval: (x) => x * x * x,
+                integral: (x) => Math.pow(x, 4) / 4,
+                label: "f(x) = x³",
+                defaultA: -1,
+                defaultB: 2
+            },
+            'sin': {
+                eval: (x) => Math.sin(x),
+                integral: (x) => -Math.cos(x),
+                label: "f(x) = sin(x)",
+                defaultA: 0,
+                defaultB: Math.PI.toFixed(2)
+            },
+            'exp': {
+                eval: (x) => Math.exp(x),
+                integral: (x) => Math.exp(x),
+                label: "f(x) = eˣ",
+                defaultA: -1,
+                defaultB: 2
+            },
+            'inv': {
+                eval: (x) => 1 / x,
+                integral: (x) => Math.log(Math.abs(x)),
+                label: "f(x) = 1/x",
+                defaultA: 1,
+                defaultB: 4
+            }
+        };
+
+        // DOM要素の取得
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+        
+        const selectFunc = document.getElementById('functionSelect');
+        const inputA = document.getElementById('inputA');
+        const inputB = document.getElementById('inputB');
+        const sliderN = document.getElementById('nSlider');
+        const displayN = document.getElementById('nDisplay');
+        const radioEvalPoints = document.getElementsByName('evalPoint');
+        const intervalError = document.getElementById('intervalError');
+        
+        const formulaDisplay = document.getElementById('formulaDisplay');
+        const approxValueDisplay = document.getElementById('approxValue');
+        const exactValueDisplay = document.getElementById('exactValue');
+        const errorValueDisplay = document.getElementById('errorValue');
+
+        // キャンバスのサイズ調整（DPI対応）
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            draw();
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // 状態変数
+        let currentFuncKey = 'x2';
+        let a = 0;
+        let b = 2;
+        let n = 5;
+        let evalMode = 'left'; // 'left', 'mid', 'right'
+
+        // 入力値の検証と状態の更新
+        function updateState() {
+            currentFuncKey = selectFunc.value;
+            a = parseFloat(inputA.value);
+            b = parseFloat(inputB.value);
+            n = parseInt(sliderN.value);
+
+            // ラジオボタンの取得
+            for (const radio of radioEvalPoints) {
+                if (radio.checked) evalMode = radio.value;
+            }
+
+            // 1/x の場合の0またぎエラー処理（簡易）
+            if (currentFuncKey === 'inv' && a <= 0 && b >= 0) {
+                if (a === 0) a = 0.1;
+                if (b === 0) b = -0.1;
+                inputA.value = a;
+                inputB.value = b;
+            }
+
+            // a >= b のエラー表示
+            if (a >= b) {
+                intervalError.classList.remove('hidden');
+                b = a + 0.1; // 描画が壊れないように仮設定
+            } else {
+                intervalError.classList.add('hidden');
+            }
+
+            displayN.innerText = `n = ${n}`;
+            formulaDisplay.innerText = functions[currentFuncKey].label;
+            
+            draw();
+        }
+
+        // 関数変更時のデフォルト値設定
+        selectFunc.addEventListener('change', () => {
+            const func = functions[selectFunc.value];
+            inputA.value = func.defaultA;
+            inputB.value = func.defaultB;
+            updateState();
+        });
+
+        // イベントリスナーの登録
+        inputA.addEventListener('input', updateState);
+        inputB.addEventListener('input', updateState);
+        sliderN.addEventListener('input', updateState);
+        radioEvalPoints.forEach(r => r.addEventListener('change', updateState));
+
+        // 描画メイン関数
+        function draw() {
+            const rect = container.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+
+            // キャンバスのクリア
+            ctx.clearRect(0, 0, width, height);
+
+            if (a >= b) return;
+
+            const funcObj = functions[currentFuncKey];
+            const f = funcObj.eval;
+
+            // 表示領域（ビューポート）の計算
+            const paddingX = (b - a) * 0.15; // 左右に15%の余白
+            const minX = a - paddingX;
+            const maxX = b + paddingX;
+
+            // Yの最小・最大を探す（区間内）
+            let minY = 0; // x軸(y=0)は必ず表示
+            let maxY = 0;
+            const sampleSteps = 200;
+            for (let i = 0; i <= sampleSteps; i++) {
+                const x = minX + (maxX - minX) * (i / sampleSteps);
+                const y = f(x);
+                if (isFinite(y)) {
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+            
+            const rangeY = maxY - minY;
+            const paddingY = rangeY === 0 ? 1 : rangeY * 0.15;
+            minY -= paddingY;
+            maxY += paddingY;
+
+            // 座標変換関数
+            const toPx = (x) => ((x - minX) / (maxX - minX)) * width;
+            const toPy = (y) => height - ((y - minY) / (maxY - minY)) * height;
+
+            // 1. グリッドと軸の描画
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.beginPath();
+            // X軸
+            const xAxisY = toPy(0);
+            ctx.moveTo(0, xAxisY);
+            ctx.lineTo(width, xAxisY);
+            // Y軸
+            const yAxisX = toPx(0);
+            if (minX <= 0 && maxX >= 0) {
+                ctx.moveTo(yAxisX, 0);
+                ctx.lineTo(yAxisX, height);
+            }
+            ctx.stroke();
+
+            // 軸のラベル (0, a, b)
+            ctx.fillStyle = '#64748b';
+            ctx.font = '12px Inter';
+            ctx.textAlign = 'center';
+            if (minX <= 0 && maxX >= 0) ctx.fillText('O', yAxisX - 10, xAxisY + 15);
+            
+            ctx.fillStyle = '#ef4444'; // 赤色で区間を明示
+            ctx.fillText('a', toPx(a), xAxisY + 15);
+            ctx.fillText('b', toPx(b), xAxisY + 15);
+
+            // 2. 区分求積法（長方形）の描画と面積計算
+            let approxArea = 0;
+            const dx = (b - a) / n;
+            const pxWidth = toPx(minX + dx) - toPx(minX);
+
+            for (let i = 0; i < n; i++) {
+                const x0 = a + i * dx;
+                let xEval;
+                if (evalMode === 'left') xEval = x0;
+                else if (evalMode === 'right') xEval = x0 + dx;
+                else xEval = x0 + dx / 2; // mid
+
+                const yVal = f(xEval);
+                const rectArea = yVal * dx;
+                approxArea += rectArea;
+
+                const pyTop = toPy(yVal);
+                const pyBottom = toPy(0);
+                const rectHeight = pyBottom - pyTop; // y軸は下が正
+
+                // 塗りつぶし
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; // Blue透明
+                ctx.fillRect(toPx(x0), pyTop, pxWidth, rectHeight);
+                
+                // 枠線
+                ctx.strokeStyle = 'rgba(37, 99, 235, 0.8)';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(toPx(x0), pyTop, pxWidth, rectHeight);
+                
+                // 評価点（ドット）の描画
+                ctx.fillStyle = '#1e3a8a';
+                ctx.beginPath();
+                ctx.arc(toPx(xEval), pyTop, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 3. 関数の曲線の描画
+            ctx.beginPath();
+            ctx.strokeStyle = '#ef4444'; // 赤色
+            ctx.lineWidth = 2.5;
+            let firstPoint = true;
+            for (let i = 0; i <= width; i+=2) {
+                const x = minX + (i / width) * (maxX - minX);
+                const y = f(x);
+                if (!isFinite(y)) {
+                    firstPoint = true;
+                    continue;
+                }
+                const px = i;
+                const py = toPy(y);
+                if (firstPoint) {
+                    ctx.moveTo(px, py);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(px, py);
+                }
+            }
+            ctx.stroke();
+
+            // 4. 数値の更新
+            const exactArea = funcObj.integral(b) - funcObj.integral(a);
+            const error = Math.abs(exactArea - approxArea);
+
+            approxValueDisplay.innerText = approxArea.toFixed(5);
+            exactValueDisplay.innerText = exactArea.toFixed(5);
+            errorValueDisplay.innerText = error.toFixed(5);
+        }
+
+        // 初期化処理
+        setTimeout(() => {
+            resizeCanvas();
+            updateState();
+        }, 100); // レイアウト完了後に描画
+    </script>
+</body>
+</html>
